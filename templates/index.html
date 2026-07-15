@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Cat Hunter — RC Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary:   #0c0e14;
+      --bg-card:      #141822;
+      --bg-card-alt:  #1a1f2e;
+      --border:       #2a3040;
+      --text-primary: #e8ecf4;
+      --text-muted:   #7a8599;
+      --accent:       #4f8cff;
+      --accent-glow:  rgba(79, 140, 255, 0.25);
+      --green:        #34d399;
+      --green-glow:   rgba(52, 211, 153, 0.25);
+      --red:          #f87171;
+      --red-glow:     rgba(248, 113, 113, 0.25);
+      --orange:       #fb923c;
+      --orange-glow:  rgba(251, 146, 60, 0.25);
+      --purple:       #a78bfa;
+      --purple-glow:  rgba(167, 139, 250, 0.25);
+      --radius:       12px;
+      --radius-sm:    8px;
+      --shadow:       0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ===== Layout ===== */
+    .app {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ===== Header ===== */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .conn-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .conn-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .conn-dot.connected {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green-glow);
+    }
+
+    /* ===== Alert Banner ===== */
+    .alert-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 600;
+      animation: pulse-bg 1.2s ease-in-out infinite;
+    }
+    .alert-banner.obstacle {
+      display: flex;
+      background: linear-gradient(135deg, rgba(248,113,113,0.15), rgba(251,146,60,0.1));
+      border: 1px solid var(--red);
+      color: var(--red);
+    }
+    .alert-banner.cat-found {
+      display: flex;
+      background: linear-gradient(135deg, rgba(52,211,153,0.15), rgba(79,140,255,0.1));
+      border: 1px solid var(--green);
+      color: var(--green);
+    }
+    @keyframes pulse-bg {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* ===== Video + Detection Panel ===== */
+    .video-section {
+      position: relative;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .video-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .video-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .video-container .no-cam {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    .video-overlay {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .overlay-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      backdrop-filter: blur(8px);
+    }
+    .badge-distance {
+      background: rgba(79,140,255,0.2);
+      border: 1px solid rgba(79,140,255,0.4);
+      color: var(--accent);
+    }
+    .badge-cat {
+      background: rgba(52,211,153,0.2);
+      border: 1px solid rgba(52,211,153,0.4);
+      color: var(--green);
+      transition: all 0.3s;
+    }
+    .badge-cat.detected {
+      background: rgba(52,211,153,0.4);
+      box-shadow: 0 0 12px var(--green-glow);
+      animation: cat-pulse 0.8s ease-in-out infinite;
+    }
+    @keyframes cat-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    /* ===== Controls Grid ===== */
+    .controls-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .card-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* ===== D-Pad ===== */
+    .dpad-container {
+      grid-column: 1 / -1;
+    }
+    .dpad-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 6px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    .ctl-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 2px;
+      padding: 14px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card-alt);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    .ctl-btn:hover {
+      background: rgba(79,140,255,0.1);
+      border-color: var(--accent);
+    }
+    .ctl-btn:active, .ctl-btn.active {
+      background: rgba(79,140,255,0.2);
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+      transform: scale(0.96);
+    }
+    .ctl-btn .icon { font-size: 1.3rem; }
+    .ctl-btn .label { font-size: 0.6rem; color: var(--text-muted); }
+
+    .btn-stop {
+      border-color: var(--red);
+      background: rgba(248,113,113,0.08);
+    }
+    .btn-stop:hover { background: rgba(248,113,113,0.15); }
+    .btn-stop:active, .btn-stop.active {
+      background: rgba(248,113,113,0.25);
+      box-shadow: 0 0 12px var(--red-glow);
+    }
+    .btn-stop .icon { color: var(--red); }
+
+    /* D-pad placement */
+    .dpad-cleft   { grid-column: 1; grid-row: 1; }
+    .dpad-fwd     { grid-column: 3; grid-row: 1; }
+    .dpad-cright  { grid-column: 5; grid-row: 1; }
+    .dpad-left    { grid-column: 2; grid-row: 2; }
+    .dpad-stop    { grid-column: 3; grid-row: 2; }
+    .dpad-right   { grid-column: 4; grid-row: 2; }
+    .dpad-cbleft  { grid-column: 1; grid-row: 3; }
+    .dpad-bwd     { grid-column: 3; grid-row: 3; }
+    .dpad-cbright { grid-column: 5; grid-row: 3; }
+
+    /* ===== Gear Selector ===== */
+    .gear-row {
+      display: flex;
+      gap: 8px;
+    }
+    .gear-btn {
+      flex: 1;
+      padding: 12px 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card-alt);
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .gear-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+    .gear-btn.active {
+      background: linear-gradient(135deg, rgba(79,140,255,0.2), rgba(167,139,250,0.15));
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .gear-speed {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* ===== Toggles & Info ===== */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label {
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    /* Switch */
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+    .slider::before {
+      content: "";
+      position: absolute;
+      height: 18px; width: 18px;
+      left: 2px; bottom: 2px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+    input:checked + .slider {
+      background: rgba(79,140,255,0.3);
+      border-color: var(--accent);
+    }
+    input:checked + .slider::before {
+      transform: translateX(20px);
+      background: var(--accent);
+    }
+
+    /* Info value */
+    .info-val {
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ===== Keyboard Hints ===== */
+    .key-hints {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .key-hint {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+    .key-hint kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-card-alt);
+      font-family: inherit;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 600px) {
+      .controls-section { grid-template-columns: 1fr; }
+      .dpad-container { grid-column: 1; }
+      .key-hints { grid-column: 1; }
+      .app { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>🐱 Cat Hunter</h1>
+      <div class="conn-status">
+        <div class="conn-dot" id="connDot"></div>
+        <span id="connLabel">Connecting…</span>
+      </div>
+    </div>
+
+    <!-- Alert Banner -->
+    <div class="alert-banner" id="alertBanner">
+      <span id="alertIcon">⚠️</span>
+      <span id="alertText"></span>
+    </div>
+
+    <!-- Video Feed -->
+    <div class="video-section">
+      <div class="video-container">
+        <img src="/video_feed" alt="Live Camera" id="videoFeed"
+             onerror="this.style.display='none'; document.getElementById('noCam').style.display='block';">
+        <span class="no-cam" id="noCam" style="display:none;">📷 No camera feed</span>
+        <div class="video-overlay">
+          <div class="overlay-badge badge-distance" id="distBadge">📏 — cm</div>
+          <div class="overlay-badge badge-cat" id="catBadge">🐱 scanning</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-section">
+
+      <!-- D-Pad -->
+      <div class="card dpad-container">
+        <div class="card-title">Drive Controls</div>
+        <div class="dpad-grid">
+          <button class="ctl-btn dpad-cleft"  data-cmd="CLEFT">
+            <span class="icon">↰</span><span class="label">Q</span>
+          </button>
+          <button class="ctl-btn dpad-fwd" data-cmd="FORWARD">
+            <span class="icon">▲</span><span class="label">W</span>
+          </button>
+          <button class="ctl-btn dpad-cright" data-cmd="CRIGHT">
+            <span class="icon">↱</span><span class="label">E</span>
+          </button>
+
+          <button class="ctl-btn dpad-left" data-cmd="LEFT">
+            <span class="icon">◀</span><span class="label">A</span>
+          </button>
+          <button class="ctl-btn btn-stop dpad-stop" data-cmd="STOP">
+            <span class="icon">⏹</span><span class="label">Space</span>
+          </button>
+          <button class="ctl-btn dpad-right" data-cmd="RIGHT">
+            <span class="icon">▶</span><span class="label">D</span>
+          </button>
+
+          <button class="ctl-btn dpad-cbleft" data-cmd="CBLEFT">
+            <span class="icon">↲</span><span class="label">Z</span>
+          </button>
+          <button class="ctl-btn dpad-bwd" data-cmd="BACKWARD">
+            <span class="icon">▼</span><span class="label">S</span>
+          </button>
+          <button class="ctl-btn dpad-cbright" data-cmd="CBRIGHT">
+            <span class="icon">↳</span><span class="label">X</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Gear Selector -->
+      <div class="card">
+        <div class="card-title">Gear</div>
+        <div class="gear-row">
+          <button class="gear-btn" data-gear="1">1</button>
+          <button class="gear-btn" data-gear="2">2</button>
+          <button class="gear-btn active" data-gear="3">3</button>
+          <button class="gear-btn" data-gear="4">4</button>
+        </div>
+        <div class="gear-speed" id="gearSpeed">Gear 3 · PWM 210</div>
+      </div>
+
+      <!-- Settings & Info -->
+      <div class="card">
+        <div class="card-title">Settings</div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">🛡️ Obstacle Avoidance</span>
+          <label class="switch">
+            <input type="checkbox" id="obstacleToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">🐱 Cat Hunt Mode</span>
+          <label class="switch">
+            <input type="checkbox" id="huntToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">📏 Distance</span>
+          <span class="info-val" id="distVal">— cm</span>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">🐱 Detection</span>
+          <span class="info-val" id="catConfidence">—</span>
+        </div>
+      </div>
+
+      <!-- Keyboard Hints -->
+      <div class="key-hints">
+        <div class="key-hint"><kbd>W</kbd><kbd>↑</kbd> Forward</div>
+        <div class="key-hint"><kbd>S</kbd><kbd>↓</kbd> Back</div>
+        <div class="key-hint"><kbd>A</kbd><kbd>←</kbd> Left</div>
+        <div class="key-hint"><kbd>D</kbd><kbd>→</kbd> Right</div>
+        <div class="key-hint"><kbd>Q</kbd> Curve L</div>
+        <div class="key-hint"><kbd>E</kbd> Curve R</div>
+        <div class="key-hint"><kbd>Z</kbd> Back-Curve L</div>
+        <div class="key-hint"><kbd>X</kbd> Back-Curve R</div>
+        <div class="key-hint"><kbd>Space</kbd> Stop</div>
+        <div class="key-hint"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> Gears</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SocketIO -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    // ============================================
+    // State
+    // ============================================
+    let currentGear = 3;
+    const GEAR_SPEEDS = { 1: 130, 2: 170, 3: 210, 4: 255 };
+    let huntMode = false;
+
+    // ============================================
+    // DOM refs
+    // ============================================
+    const $connDot    = document.getElementById('connDot');
+    const $connLabel  = document.getElementById('connLabel');
+    const $alertBanner= document.getElementById('alertBanner');
+    const $alertIcon  = document.getElementById('alertIcon');
+    const $alertText  = document.getElementById('alertText');
+    const $distBadge  = document.getElementById('distBadge');
+    const $catBadge   = document.getElementById('catBadge');
+    const $distVal    = document.getElementById('distVal');
+    const $gearSpeed  = document.getElementById('gearSpeed');
+    const $catConf    = document.getElementById('catConfidence');
+    const gearBtns    = document.querySelectorAll('.gear-btn');
+    const ctlBtns     = document.querySelectorAll('.ctl-btn');
+
+    // ============================================
+    // SocketIO connection
+    // ============================================
+    const socket = io();
+
+    socket.on('connect', () => {
+      $connDot.classList.add('connected');
+      $connLabel.textContent = 'Connected';
+    });
+
+    socket.on('disconnect', () => {
+      $connDot.classList.remove('connected');
+      $connLabel.textContent = 'Disconnected';
+    });
+
+    // Initial status
+    socket.on('status', (data) => {
+      if (data.gear) setGearUI(data.gear);
+      if (data.speed) $gearSpeed.textContent = `Gear ${data.gear} · PWM ${data.speed}`;
+    });
+
+    // Distance updates
+    socket.on('distance', (data) => {
+      const v = data.value;
+      const txt = (v != null && v >= 0) ? `${v.toFixed(1)} cm` : '— cm';
+      $distBadge.textContent = `📏 ${txt}`;
+      $distVal.textContent = txt;
+    });
+
+    // Obstacle alert
+    socket.on('obstacle', (data) => {
+      $alertBanner.className = 'alert-banner obstacle';
+      $alertIcon.textContent = '⚠️';
+      const dist = data.distance ? `${data.distance.toFixed(1)} cm` : '';
+      const action = data.turning ? ' · Turning away' : '';
+      $alertText.textContent = `Obstacle detected! ${dist}${action}`;
+    });
+
+    socket.on('avoid_done', () => {
+      $alertBanner.className = 'alert-banner';
+      $alertBanner.style.display = 'none';
+    });
+
+    socket.on('obstacle_toggle', (data) => {
+      document.getElementById('obstacleToggle').checked = data.enabled;
+    });
+
+    // Cat detection
+    socket.on('cat_detection', (data) => {
+      const detected = data.detected;
+      const conf = data.confidence;
+
+      $catBadge.classList.toggle('detected', detected);
+      $catBadge.textContent = detected
+        ? `🐱 CAT ${(conf * 100).toFixed(0)}%`
+        : `🐱 scanning`;
+
+      $catConf.textContent = detected
+        ? `Cat ${(conf * 100).toFixed(1)}%`
+        : 'No cat';
+      $catConf.style.color = detected ? 'var(--green)' : 'var(--text-muted)';
+
+      if (detected) {
+        $alertBanner.className = 'alert-banner cat-found';
+        $alertIcon.textContent = '🐱';
+        $alertText.textContent = `Cat detected! Confidence: ${(conf * 100).toFixed(1)}%`;
+      }
+    });
+
+    socket.on('error', (data) => {
+      console.error('Server error:', data.msg);
+    });
+
+    // ============================================
+    // Send commands
+    // ============================================
+    function sendCmd(cmd, extra) {
+      const payload = { cmd, ...extra };
+      socket.emit('command', payload);
+    }
+
+    // ============================================
+    // Gear UI
+    // ============================================
+    function setGearUI(gear) {
+      currentGear = gear;
+      gearBtns.forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.gear) === gear);
+      });
+      $gearSpeed.textContent = `Gear ${gear} · PWM ${GEAR_SPEEDS[gear]}`;
+    }
+
+    gearBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gear = parseInt(btn.dataset.gear);
+        setGearUI(gear);
+        sendCmd('SET_SPEED', { gear });
+      });
+    });
+
+    // ============================================
+    // Control buttons (mouse + touch)
+    // ============================================
+    ctlBtns.forEach(btn => {
+      const cmd = btn.dataset.cmd;
+
+      // Mouse
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        btn.classList.add('active');
+        sendCmd(cmd);
+      });
+      btn.addEventListener('mouseup', () => {
+        btn.classList.remove('active');
+        if (cmd !== 'STOP') sendCmd('STOP');
+      });
+      btn.addEventListener('mouseleave', () => {
+        if (btn.classList.contains('active')) {
+          btn.classList.remove('active');
+          if (cmd !== 'STOP') sendCmd('STOP');
+        }
+      });
+
+      // Touch
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        btn.classList.add('active');
+        sendCmd(cmd);
+      });
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        btn.classList.remove('active');
+        if (cmd !== 'STOP') sendCmd('STOP');
+      });
+      btn.addEventListener('touchcancel', () => {
+        btn.classList.remove('active');
+        if (cmd !== 'STOP') sendCmd('STOP');
+      });
+    });
+
+    // ============================================
+    // Toggles
+    // ============================================
+    document.getElementById('obstacleToggle').addEventListener('change', function() {
+      sendCmd(this.checked ? 'OBSTACLE_ON' : 'OBSTACLE_OFF');
+    });
+
+    document.getElementById('huntToggle').addEventListener('change', function() {
+      huntMode = this.checked;
+      sendCmd('HUNT_MODE', { enabled: huntMode });
+    });
+
+    // ============================================
+    // Keyboard controls
+    // ============================================
+    const KEY_MAP = {
+      'w': 'FORWARD', 'arrowup':    'FORWARD',
+      's': 'BACKWARD','arrowdown':  'BACKWARD',
+      'a': 'LEFT',    'arrowleft':  'LEFT',
+      'd': 'RIGHT',   'arrowright': 'RIGHT',
+      'q': 'CLEFT',
+      'e': 'CRIGHT',
+      'z': 'CBLEFT',
+      'x': 'CBRIGHT',
+      ' ': 'STOP',
+    };
+
+    const GEAR_KEYS = { '1': 1, '2': 2, '3': 3, '4': 4 };
+    const pressedKeys = new Set();
+
+    function btnForCmd(cmd) {
+      return document.querySelector(`.ctl-btn[data-cmd="${cmd}"]`);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+
+      // Gear keys
+      if (GEAR_KEYS[key]) {
+        e.preventDefault();
+        const gear = GEAR_KEYS[key];
+        setGearUI(gear);
+        sendCmd('SET_SPEED', { gear });
+        return;
+      }
+
+      const cmd = KEY_MAP[key];
+      if (!cmd) return;
+      e.preventDefault();
+
+      if (pressedKeys.has(key)) return; // Held key repeat
+      pressedKeys.add(key);
+
+      const btn = btnForCmd(cmd);
+      if (btn) btn.classList.add('active');
+      sendCmd(cmd);
+    });
+
+    document.addEventListener('keyup', (e) => {
+      const key = e.key.toLowerCase();
+      const cmd = KEY_MAP[key];
+      if (!cmd) return;
+      e.preventDefault();
+
+      pressedKeys.delete(key);
+
+      const btn = btnForCmd(cmd);
+      if (btn) btn.classList.remove('active');
+
+      // Only stop if no other movement keys are held
+      if (cmd !== 'STOP' && pressedKeys.size === 0) {
+        sendCmd('STOP');
+      }
+    });
+
+    // Prevent context menu on long-press (mobile)
+    document.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('.ctl-btn')) e.preventDefault();
+    });
+  </script>
+</body>
+</html>
