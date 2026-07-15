@@ -31,7 +31,7 @@ class BaselineCNN(nn.Module):
             nn.Linear(64 * 28 * 28, 128),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(128, 2)  # 二分类：0为非猫，1为猫
+            nn.Linear(128, 5)  # 五分类：Ragdoll, Singapura, Persian, Sphynx, Pallas
         )
 
     def forward(self, x):

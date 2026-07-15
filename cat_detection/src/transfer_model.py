@@ -25,7 +25,7 @@ def get_transfer_model(model_name="mobilenet_v2", freeze_backbone=True):
         # 其中包含 nn.Dropout 和 nn.Linear(1280, 1000)
         # 我们用一个新的线性层替换最后一层，使其输出为 2 个类别
         in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, 2)
+        model.classifier[1] = nn.Linear(in_features, 5)
         
     elif model_name == "resnet50":
         # 加载 ResNet50
@@ -41,7 +41,7 @@ def get_transfer_model(model_name="mobilenet_v2", freeze_backbone=True):
                 
         # ResNet50 的最后一层是 fc 层 (nn.Linear(2048, 1000))
         in_features = model.fc.in_features
-        model.fc = nn.Linear(in_features, 2)
+        model.fc = nn.Linear(in_features, 5)
         
     else:
         raise ValueError(f"Unknown model name: {model_name}. Choose 'mobilenet_v2' or 'resnet50'.")
