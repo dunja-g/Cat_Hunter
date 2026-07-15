@@ -70,7 +70,7 @@ def evaluate_model(args):
     report = classification_report(
         all_labels, 
         all_preds, 
-        target_names=["Non-Cat (Ship)", "Cat"], 
+        target_names=["Ragdoll", "Singapura", "Persian", "Sphynx", "Pallas"], 
         digits=4
     )
     print(report)
@@ -92,8 +92,8 @@ def plot_confusion_matrix(cm, model_name):
         annot=True, 
         fmt="d", 
         cmap="Blues", 
-        xticklabels=["Non-Cat", "Cat"], 
-        yticklabels=["Non-Cat", "Cat"]
+        xticklabels=["Ragdoll", "Singapura", "Persian", "Sphynx", "Pallas"], 
+        yticklabels=["Ragdoll", "Singapura", "Persian", "Sphynx", "Pallas"]
     )
     plt.ylabel("Actual Label")
     plt.xlabel("Predicted Label")
