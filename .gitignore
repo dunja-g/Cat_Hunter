@@ -1,0 +1,33 @@
+# ===== Dataset & Data files =====
+archive/
+non_cats/
+data/
+metadata/*.csv
+
+# ===== Model weights =====
+models/*.pth
+models/*.pt
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# ===== Virtual environments =====
+venv/
+env/
+.venv/
+.env
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
