@@ -12,6 +12,7 @@ import io
 from flask import Flask, render_template, Response
 from flask_socketio import SocketIO, emit
 from car_controller import MotorController
+from cat_detector import CatDetector, DetectionLoop
 
 # ============================================
 # Camera
@@ -98,6 +99,12 @@ mc = None
 mc_lock = threading.Lock()
 obstacle_alert = False
 obstacle_enabled = True  # obstacle avoidance toggle state
+
+# Cat detection
+detector = None
+detection_loop = None
+hunt_mode = False
+last_detection = {"detected": False, "confidence": 0.0}
 
 # ============================================
 # Routes
@@ -212,6 +219,12 @@ def on_command(data):
             obstacle_alert = False
             emit('obstacle_toggle', {'enabled': False})
 
+        # Hunt mode toggle
+        elif cmd == 'HUNT_MODE':
+            hunt_mode = data.get('enabled', False)
+            print(f"[HuntMode] {'ON' if hunt_mode else 'OFF'}", flush=True)
+            emit('hunt_mode', {'enabled': hunt_mode})
+
 # ============================================
 # Background thread: Arduino serial listener + distance polling
 # ============================================
@@ -261,15 +274,38 @@ def arduino_listener():
         time.sleep(0.1)
 
 # ============================================
+# Cat detection callback
+# ============================================
+def on_detection_result(result):
+    """Called by DetectionLoop each time a frame is classified."""
+    global last_detection, hunt_mode
+    last_detection = result
+    socketio.emit('cat_detection', {
+        'detected': result['detected'],
+        'confidence': result['confidence'],
+        'label': result['label'],
+        'inference_ms': result.get('inference_ms', 0),
+    })
+    # Hunt mode: drive forward when cat detected, stop when lost
+    if hunt_mode:
+        with mc_lock:
+            if mc:
+                if result['detected']:
+                    mc.car_forward()
+                else:
+                    mc.car_stop()
+
+# ============================================
 # Entry point
 # ============================================
 def main():
-    global mc
+    global mc, detector, detection_loop
 
     port = sys.argv[1] if len(sys.argv) > 1 else '/dev/ttyACM0'
+    model_weights = sys.argv[2] if len(sys.argv) > 2 else 'models/best_transfer.pth'
 
     print("=" * 55)
-    print("  WebSocket RC Car Server")
+    print("  Cat Hunter — RC Car Server")
     print("=" * 55)
     print(f"Connecting to Arduino ({port})...", flush=True)
 
@@ -280,6 +316,26 @@ def main():
 
     # Initialize camera
     init_camera()
+
+    # Initialize cat detector
+    print("Loading cat detection model...", flush=True)
+    try:
+        detector = CatDetector(
+            weights_path=model_weights,
+            model_name="mobilenet_v2",
+            confidence_threshold=0.65,
+        )
+        # Start detection loop (classify 1 frame/sec to leave CPU headroom)
+        detection_loop = DetectionLoop(
+            detector=detector,
+            read_frame_fn=read_frame,
+            on_result_fn=on_detection_result,
+            interval=1.0,
+        )
+        detection_loop.start()
+    except Exception as e:
+        print(f"[CatDetector] Failed to load: {e}", flush=True)
+        print("[CatDetector] Continuing without cat detection", flush=True)
 
     # Start background listener thread
     socketio.start_background_task(arduino_listener)
@@ -293,6 +349,8 @@ def main():
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
+        if detection_loop:
+            detection_loop.stop()
         if mc:
             mc.car_stop()
             mc.close()
