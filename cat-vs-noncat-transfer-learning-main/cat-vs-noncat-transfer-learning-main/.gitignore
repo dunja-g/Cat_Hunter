@@ -1,0 +1,23 @@
+# Dataset and Data files
+archive/
+non_cats/
+metadata/*.csv
+data/
+
+# Model weights
+models/*.pth
+models/*.pt
+
+# Python caches
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+env/
+.env
+
+# OS specific files
+.DS_Store
+Thumbs.db
