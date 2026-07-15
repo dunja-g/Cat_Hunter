@@ -601,18 +601,18 @@
 
       $catBadge.classList.toggle('detected', detected);
       $catBadge.textContent = detected
-        ? `🐱 CAT ${(conf * 100).toFixed(0)}%`
+        ? `🐱 ${data.label.toUpperCase()} ${(conf * 100).toFixed(0)}%`
         : `🐱 scanning`;
 
       $catConf.textContent = detected
-        ? `Cat ${(conf * 100).toFixed(1)}%`
+        ? `${data.label} ${(conf * 100).toFixed(1)}%`
         : 'No cat';
       $catConf.style.color = detected ? 'var(--green)' : 'var(--text-muted)';
 
       if (detected) {
         $alertBanner.className = 'alert-banner cat-found';
         $alertIcon.textContent = '🐱';
-        $alertText.textContent = `Cat detected! Confidence: ${(conf * 100).toFixed(1)}%`;
+        $alertText.textContent = `${data.label} detected! Confidence: ${(conf * 100).toFixed(1)}%`;
       }
     });
 
