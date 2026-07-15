@@ -35,9 +35,8 @@ class CatDetector:
     Designed to run on a Raspberry Pi (MobileNetV2 recommended).
     """
 
-    # Class names in index order  (modular pipeline convention: 0=non-cat, 1=cat)
-    CLASS_NAMES = ["non-cat", "cat"]
-    CAT_INDEX = 1
+    # Class names in index order for the 5-class breed model
+    CLASS_NAMES = ["Ragdoll", "Singapura", "Persian", "Sphynx", "Pallas"]
 
     # ImageNet normalisation (matches the standalone training scripts)
     _transform = transforms.Compose([
@@ -60,6 +59,8 @@ class CatDetector:
             "mobilenet_v2" (recommended for Pi) or "resnet50".
         confidence_threshold : float
             Minimum softmax probability to declare "cat detected".
+            Since this is a 5-class model, background/non-cats will typically
+            have low confidence across all classes.
         device : str or None
             Force "cpu" or "cuda".  Auto-detected if None.
         """
@@ -123,15 +124,15 @@ class CatDetector:
             logits = self.model(tensor)
             probs = F.softmax(logits, dim=1)[0]
 
-        cat_prob = probs[self.CAT_INDEX].item()
         predicted = int(probs.argmax())
-        detected = predicted == self.CAT_INDEX and cat_prob >= self.confidence_threshold
+        max_prob = probs[predicted].item()
+        detected = max_prob >= self.confidence_threshold
 
         dt = time.time() - t0
 
         return {
             "detected": detected,
-            "confidence": cat_prob,
+            "confidence": max_prob,
             "label": self.CLASS_NAMES[predicted],
             "inference_ms": round(dt * 1000, 1),
         }
