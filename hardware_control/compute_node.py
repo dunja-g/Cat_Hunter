@@ -37,9 +37,9 @@ def main():
         help="Path to model weights on this machine (default: models/best_transfer.pth)"
     )
     parser.add_argument(
-        "--model", default="mobilenet_v2",
+        "--model", default="resnet50",
         choices=["mobilenet_v2", "resnet50"],
-        help="Model architecture to use (default: mobilenet_v2)"
+        help="Model architecture to use (default: resnet50)"
     )
     parser.add_argument(
         "--threshold", type=float, default=0.65,

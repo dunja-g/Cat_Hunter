@@ -34,7 +34,8 @@ def evaluate_model(args):
         model = get_baseline_model()
         weight_filename = "best_baseline.pth"
     elif args.model == "transfer":
-        model = get_transfer_model("mobilenet_v2", freeze_backbone=True)
+        # 我们已经将模型升级为 resnet50，必须使用相同的结构才能加载权重
+        model = get_transfer_model("resnet50", freeze_backbone=True)
         weight_filename = "best_transfer.pth"
     else:
         raise ValueError(f"Unknown model: {args.model}")

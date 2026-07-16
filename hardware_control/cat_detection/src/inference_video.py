@@ -25,7 +25,7 @@ def main():
     # 2. 加载 5 分类模型
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n[INFO] Loading 5-class Transfer Model on {device}...")
-    model = get_transfer_model("mobilenet_v2", freeze_backbone=True)
+    model = get_transfer_model("resnet50", freeze_backbone=True)
     
     try:
         model.load_state_dict(torch.load("models/best_transfer.pth", map_location=device))
