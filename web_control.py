@@ -1,18 +1,25 @@
 """
 WebSocket RC Car — zero latency
-Run on Raspberry Pi: python3 web_control.py /dev/ttyACM0
-Open http://<raspberrypi-ip>:5000 in browser to control
+
+Mode 1 (standalone):  python3 web_control.py /dev/ttyACM0
+  Pi handles camera + ML + motors.
+
+Mode 2 (offloaded):   python3 web_control.py /dev/ttyACM0 --no-ml
+  Pi handles camera + motors only.
+  Run compute_node.py on a laptop to do ML inference remotely.
+
+Open http://<raspberrypi-ip>:5000 in browser to control.
 """
 
 import sys
+import argparse
 import time
 import threading
 import io
 
-from flask import Flask, render_template, Response
+from flask import Flask, render_template, Response, request, jsonify
 from flask_socketio import SocketIO, emit
 from car_controller import MotorController
-from cat_detector import CatDetector, DetectionLoop
 
 # ============================================
 # Camera
@@ -136,6 +143,25 @@ def video_feed():
         generate_frames(),
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
+
+# ============================================
+# Remote ML API (used by compute_node.py)
+# ============================================
+@app.route('/api/detection', methods=['POST'])
+def api_detection():
+    """
+    Receives cat detection results from the laptop's compute_node.py.
+    Expected JSON: {detected, confidence, label, inference_ms}
+    """
+    data = request.get_json(force=True)
+    result = {
+        'detected': data.get('detected', False),
+        'confidence': data.get('confidence', 0.0),
+        'label': data.get('label', 'unknown'),
+        'inference_ms': data.get('inference_ms', 0),
+    }
+    on_detection_result(result)
+    return jsonify({'status': 'ok'})
 
 # ============================================
 # WebSocket event handlers
@@ -301,15 +327,25 @@ def on_detection_result(result):
 def main():
     global mc, detector, detection_loop
 
-    port = sys.argv[1] if len(sys.argv) > 1 else '/dev/ttyACM0'
-    model_weights = sys.argv[2] if len(sys.argv) > 2 else 'models/best_transfer.pth'
+    parser = argparse.ArgumentParser(description='Cat Hunter RC Car Server')
+    parser.add_argument('port', nargs='?', default='/dev/ttyACM0',
+                        help='Arduino serial port (default: /dev/ttyACM0)')
+    parser.add_argument('--weights', default='models/best_transfer.pth',
+                        help='Path to model weights file')
+    parser.add_argument('--no-ml', action='store_true',
+                        help='Disable on-board ML inference (use compute_node.py on laptop instead)')
+    args = parser.parse_args()
 
     print("=" * 55)
     print("  Cat Hunter — RC Car Server")
+    if args.no_ml:
+        print("  MODE: Camera + Motors only (ML offloaded to laptop)")
+    else:
+        print("  MODE: Standalone (camera + ML + motors)")
     print("=" * 55)
-    print(f"Connecting to Arduino ({port})...", flush=True)
+    print(f"Connecting to Arduino ({args.port})...", flush=True)
 
-    mc = MotorController(port=port)
+    mc = MotorController(port=args.port)
     mc.car_set_speed(GEAR_PRESETS[DEFAULT_GEAR])
     print(f"Connected! Gear: {DEFAULT_GEAR} (speed={GEAR_PRESETS[DEFAULT_GEAR]})")
     print()
@@ -317,25 +353,29 @@ def main():
     # Initialize camera
     init_camera()
 
-    # Initialize cat detector
-    print("Loading cat detection model...", flush=True)
-    try:
-        detector = CatDetector(
-            weights_path=model_weights,
-            model_name="mobilenet_v2",
-            confidence_threshold=0.65,
-        )
-        # Start detection loop (classify 1 frame/sec to leave CPU headroom)
-        detection_loop = DetectionLoop(
-            detector=detector,
-            read_frame_fn=read_frame,
-            on_result_fn=on_detection_result,
-            interval=1.0,
-        )
-        detection_loop.start()
-    except Exception as e:
-        print(f"[CatDetector] Failed to load: {e}", flush=True)
-        print("[CatDetector] Continuing without cat detection", flush=True)
+    # Initialize cat detector (only if ML is NOT offloaded)
+    if not args.no_ml:
+        print("Loading cat detection model...", flush=True)
+        try:
+            from cat_detector import CatDetector, DetectionLoop
+            detector = CatDetector(
+                weights_path=args.weights,
+                model_name="mobilenet_v2",
+                confidence_threshold=0.65,
+            )
+            # Start detection loop (classify 1 frame/sec to leave CPU headroom)
+            detection_loop = DetectionLoop(
+                detector=detector,
+                read_frame_fn=read_frame,
+                on_result_fn=on_detection_result,
+                interval=1.0,
+            )
+            detection_loop.start()
+        except Exception as e:
+            print(f"[CatDetector] Failed to load: {e}", flush=True)
+            print("[CatDetector] Continuing without cat detection", flush=True)
+    else:
+        print("[ML] Offloaded — waiting for compute_node.py on /api/detection", flush=True)
 
     # Start background listener thread
     socketio.start_background_task(arduino_listener)
