@@ -40,8 +40,12 @@ def get_transfer_model(model_name="mobilenet_v2", freeze_backbone=True):
                 param.requires_grad = False
                 
         # ResNet50 的最后一层是 fc 层 (nn.Linear(2048, 1000))
+        # 加入 Dropout 防止过拟合
         in_features = model.fc.in_features
-        model.fc = nn.Linear(in_features, 5)
+        model.fc = nn.Sequential(
+            nn.Dropout(p=0.5),
+            nn.Linear(in_features, 5)
+        )
         
     else:
         raise ValueError(f"Unknown model name: {model_name}. Choose 'mobilenet_v2' or 'resnet50'.")

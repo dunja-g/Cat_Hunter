@@ -51,9 +51,11 @@ def get_transforms(is_train=True):
             # 亮度微调 (brightness=0.2 相当于在 [0.8, 1.2] 之间随机调整)
             transforms.ColorJitter(brightness=0.2),
             transforms.ToTensor(),  # ToTensor 会自动把像素归一化到 [0.0, 1.0]
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
     else:
         return transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])

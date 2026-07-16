@@ -3,8 +3,10 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 import matplotlib.pyplot as plt
+import numpy as np
+from torchvision.transforms import v2
 
 # 导入自定义的数据集与模型
 from dataset import CatNonCatDataset, get_transforms
@@ -34,7 +36,15 @@ def train_model(args):
         sample_fraction=args.sample_fraction
     )
     
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    # 统计类别频率并配置 WeightedRandomSampler 解决长尾分布
+    targets = train_dataset.df["label"].values
+    class_sample_count = np.array([len(np.where(targets == t)[0]) for t in range(5)])
+    weight = 1. / (class_sample_count + 1e-6)
+    samples_weight = np.array([weight[t] for t in targets])
+    samples_weight = torch.from_numpy(samples_weight).double()
+    sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
+    
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=sampler, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     
     print(f"[INFO] Train samples size: {len(train_dataset)} | Validation samples size: {len(val_dataset)}")
@@ -45,27 +55,53 @@ def train_model(args):
     if args.model == "baseline":
         model = get_baseline_model()
     elif args.model == "transfer":
-        model = get_transfer_model("mobilenet_v2", freeze_backbone=True)
+        # 如果启用了 fine_tune，则解冻整个骨干网络
+        freeze_bb = not args.fine_tune
+        # 换用更强的 convnext_tiny 或者继续用 resnet50
+        model = get_transfer_model(args.arch, freeze_backbone=freeze_bb)
     else:
         raise ValueError(f"Unknown model: {args.model}")
         
     model = model.to(device)
     
+    if args.weights and os.path.exists(args.weights):
+        print(f"[INFO] Loading custom weights from {args.weights}...")
+        model.load_state_dict(torch.load(args.weights, map_location=device))
+    
     # 4. 损失函数与优化器
     criterion = nn.CrossEntropyLoss()
     
-    # 过滤出需要更新梯度的参数 (用于迁移学习)
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-    
-    if args.optimizer == "adam":
-        optimizer = optim.Adam(trainable_params, lr=args.lr)
-    elif args.optimizer == "sgd":
-        optimizer = optim.SGD(trainable_params, lr=args.lr, momentum=0.9)
+    # 差异化学习率配置
+    if args.fine_tune and args.model == "transfer":
+        # 主干网络使用极低学习率，分类头使用正常学习率
+        backbone_params = [p for n, p in model.named_parameters() if "classifier" not in n and p.requires_grad]
+        head_params = [p for n, p in model.named_parameters() if "classifier" in n and p.requires_grad]
+        optimizer_grouped_parameters = [
+            {"params": backbone_params, "lr": args.lr * 0.1},
+            {"params": head_params, "lr": args.lr}
+        ]
+        if args.optimizer == "adam":
+            optimizer = optim.Adam(optimizer_grouped_parameters, weight_decay=1e-4)
+        else:
+            optimizer = optim.SGD(optimizer_grouped_parameters, momentum=0.9, weight_decay=1e-4)
     else:
-        raise ValueError(f"Unknown optimizer: {args.optimizer}")
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        if args.optimizer == "adam":
+            optimizer = optim.Adam(trainable_params, lr=args.lr, weight_decay=1e-4)
+        else:
+            optimizer = optim.SGD(trainable_params, lr=args.lr, momentum=0.9, weight_decay=1e-4)
+            
+    # 替换为余弦退火学习率调度器
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
         
     # 5. 开始训练循环
     print(f"[INFO] Start training for {args.epochs} epochs...")
+    
+    # 定义 CutMix 和 MixUp 数据增强 (在 Batch 层面)
+    cutmix = v2.CutMix(alpha=1.0, num_classes=5)
+    mixup = v2.MixUp(alpha=0.2, num_classes=5)
+    cutmix_or_mixup = v2.RandomChoice([cutmix, mixup])
+    
     history = {
         "train_loss": [], "train_acc": [],
         "val_loss": [], "val_acc": []
@@ -82,6 +118,10 @@ def train_model(args):
         for batch_idx, (images, labels) in enumerate(train_loader):
             images, labels = images.to(device), labels.to(device)
             
+            # 引入 Mixup/Cutmix (将 Hard label 转为 Soft label)
+            if not args.no_aug:
+                images, labels = cutmix_or_mixup(images, labels)
+            
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -91,7 +131,13 @@ def train_model(args):
             running_loss += loss.item() * images.size(0)
             _, predicted = outputs.max(1)
             total += labels.size(0)
-            correct += predicted.eq(labels).sum().item()
+            
+            if not args.no_aug:
+                # 软标签，求最大值索引匹配
+                correct += predicted.eq(labels.argmax(dim=1)).sum().item()
+            else:
+                # 原始硬标签
+                correct += predicted.eq(labels).sum().item()
             
             if (batch_idx + 1) % 10 == 0 or (batch_idx + 1) == len(train_loader):
                 acc = 100. * correct / total
@@ -128,6 +174,9 @@ def train_model(args):
         history["train_acc"].append(epoch_train_acc)
         history["val_loss"].append(epoch_val_loss)
         history["val_acc"].append(epoch_val_acc)
+        
+        # 余弦退火按 epoch 步进 (不用传入 loss)
+        scheduler.step()
         
         # 保存最佳模型权重
         if epoch_val_loss < best_val_loss:
@@ -177,11 +226,15 @@ def plot_curves(history, model_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Image Classification Training Script")
     parser.add_argument("--model", type=str, default="baseline", choices=["baseline", "transfer"], help="Model to train")
+    parser.add_argument("--arch", type=str, default="convnext_tiny", choices=["resnet50", "convnext_tiny", "mobilenet_v2"], help="Backbone architecture for transfer learning")
     parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size (keep low for laptops)")
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"], help="Optimizer")
     parser.add_argument("--sample_fraction", type=float, default=1.0, help="Fraction of dataset to sample (0.0 to 1.0) for fast CPU run")
+    parser.add_argument("--fine_tune", action="store_true", help="If flag is set, unfreeze the backbone for full fine-tuning")
+    parser.add_argument("--no_aug", action="store_true", help="Disable MixUp/CutMix data augmentation")
+    parser.add_argument("--weights", type=str, default="", help="Path to custom weights (.pth) to load before training")
     
     args = parser.parse_args()
     
