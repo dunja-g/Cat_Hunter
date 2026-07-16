@@ -36,7 +36,7 @@ class CatDetector:
     """
 
     # Class names in index order for the 5-class breed model
-    CLASS_NAMES = ["Ragdoll", "Singapura", "Persian", "Sphynx", "Pallas"]
+    CLASS_NAMES = ["Persian", "Ragdoll", "Sphynx", "Pallas", "Singapura"]
 
     # ImageNet normalisation (matches the standalone training scripts)
     _transform = transforms.Compose([
