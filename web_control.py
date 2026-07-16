@@ -68,13 +68,21 @@ def read_frame():
     if camera is None:
         return None
     cam_type, cam_obj = camera
+    frame = None
+    
     if cam_type == 'picamera2':
-        import numpy as np
-        return cam_obj.capture_array()
+        frame = cam_obj.capture_array()
     elif cam_type == 'opencv':
         ret, frame = cam_obj.read()
-        return frame if ret else None
-    return None
+        if not ret:
+            frame = None
+
+    if frame is not None:
+        import cv2
+        # Fix color channel inversion (camera physically outputs RGB but pipeline expects BGR)
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        
+    return frame
 
 def release_camera():
     global camera
