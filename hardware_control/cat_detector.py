@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import threading
+import cv2
 
 import numpy as np
 import torch
@@ -115,8 +116,26 @@ class CatDetector:
         """
         t0 = time.time()
 
+        # --- Image Enhancement for Screen/Paper Re-capture ---
+        # 1. Convert to LAB color space to apply CLAHE to the L (Lightness) channel
+        lab = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+        
+        # Apply CLAHE
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l_channel)
+        
+        # Merge back and convert to BGR
+        limg = cv2.merge((cl, a_channel, b_channel))
+        enhanced_bgr = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+        
+        # 2. Sharpening (Unsharp Masking) to combat Moiré/blur
+        gaussian = cv2.GaussianBlur(enhanced_bgr, (0, 0), 2.0)
+        enhanced_bgr = cv2.addWeighted(enhanced_bgr, 1.5, gaussian, -0.5, 0)
+        # -----------------------------------------------------
+
         # BGR → RGB → PIL → tensor
-        rgb = bgr_frame[:, :, ::-1]  # fast BGR→RGB via numpy slicing
+        rgb = enhanced_bgr[:, :, ::-1]  # fast BGR→RGB via numpy slicing
         pil_img = Image.fromarray(rgb.astype(np.uint8))
         tensor = self._transform(pil_img).unsqueeze(0).to(self.device)
 
