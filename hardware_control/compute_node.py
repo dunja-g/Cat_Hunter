@@ -16,8 +16,53 @@ import sys
 
 import cv2
 import requests
+import threading
 
 from cat_detector import CatDetector
+
+class StreamCamera:
+    def __init__(self, url):
+        self.url = url
+        self.cap = cv2.VideoCapture(url)
+        self.ret = False
+        self.frame = None
+        self.running = True
+        self.lock = threading.Lock()
+        self.thread = threading.Thread(target=self._update, daemon=True)
+        self.thread.start()
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def _update(self):
+        error_streak = 0
+        while self.running:
+            ret, frame = self.cap.read()
+            with self.lock:
+                self.ret = ret
+                if ret:
+                    self.frame = frame
+                    error_streak = 0
+                else:
+                    error_streak += 1
+            
+            if error_streak >= 10:
+                print(f"[WARN] Lost 10 frames in a row, reconnecting...")
+                self.cap.release()
+                time.sleep(2)
+                self.cap = cv2.VideoCapture(self.url)
+                error_streak = 0
+
+    def read(self):
+        with self.lock:
+            if self.frame is not None:
+                return True, self.frame.copy()
+            return False, None
+
+    def release(self):
+        self.running = False
+        self.thread.join(timeout=2)
+        self.cap.release()
 
 
 def main():
@@ -33,8 +78,8 @@ def main():
         help="Port the Pi's web server is running on (default: 5000)"
     )
     parser.add_argument(
-        "--weights", default="models/best_transfer.pth",
-        help="Path to model weights on this machine (default: models/best_transfer.pth)"
+        "--weights", default="../models/best_transfer.pth",
+        help="Path to model weights on this machine (default: ../models/best_transfer.pth)"
     )
     parser.add_argument(
         "--model", default="resnet50",
@@ -71,7 +116,7 @@ def main():
 
     # ── Connect to Pi video stream ──────────────────────────────
     print(f"Connecting to Pi video stream: {stream_url}")
-    cap = cv2.VideoCapture(stream_url)
+    cap = StreamCamera(stream_url)
 
     if not cap.isOpened():
         print(f"[ERROR] Cannot connect to {stream_url}")
@@ -89,8 +134,6 @@ def main():
 
     # ── Inference loop ──────────────────────────────────────────
     frame_count = 0
-    error_streak = 0
-    MAX_ERRORS = 10  # reconnect after this many consecutive failures
     last_inference_time = 0
 
     while True:
@@ -98,17 +141,9 @@ def main():
         ret, frame = cap.read()
 
         if not ret:
-            error_streak += 1
-            if error_streak >= MAX_ERRORS:
-                print(f"[WARN] Lost {MAX_ERRORS} frames in a row, reconnecting...")
-                cap.release()
-                time.sleep(2)
-                cap = cv2.VideoCapture(stream_url)
-                error_streak = 0
             time.sleep(0.1)
             continue
 
-        error_streak = 0
         frame_count += 1
 
         # Only process inference at the requested interval to save CPU, but don't sleep!
