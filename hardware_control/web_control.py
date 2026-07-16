@@ -143,7 +143,7 @@ def generate_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' +
                jpeg.tobytes() + b'\r\n')
-        time.sleep(0.05)  # ~15-20 fps
+        time.sleep(0.01)  # Faster stream
 
 @app.route('/video_feed')
 def video_feed():

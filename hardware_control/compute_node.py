@@ -91,8 +91,10 @@ def main():
     frame_count = 0
     error_streak = 0
     MAX_ERRORS = 10  # reconnect after this many consecutive failures
+    last_inference_time = 0
 
     while True:
+        # Read as fast as possible to keep the OpenCV buffer empty!
         ret, frame = cap.read()
 
         if not ret:
@@ -109,6 +111,13 @@ def main():
         error_streak = 0
         frame_count += 1
 
+        # Only process inference at the requested interval to save CPU, but don't sleep!
+        now = time.time()
+        if now - last_inference_time < args.interval:
+            continue
+            
+        last_inference_time = now
+
         # Run the model
         result = detector.classify_frame(frame)
 
@@ -122,22 +131,19 @@ def main():
 
         try:
             resp = requests.post(api_url, json=payload, timeout=2)
-            status = "✓" if resp.status_code == 200 else f"HTTP {resp.status_code}"
+            status = "OK" if resp.status_code == 200 else f"HTTP {resp.status_code}"
         except requests.RequestException as e:
             status = f"SEND FAIL: {e}"
 
         # Console log
         if result["detected"]:
             print(
-                f"[#{frame_count}] 🐱 {result['label']} "
+                f"[#{frame_count}] [CAT] {result['label']} "
                 f"{result['confidence']*100:.1f}% "
-                f"({result.get('inference_ms', 0):.0f}ms) → {status}"
+                f"({result.get('inference_ms', 0):.0f}ms) -> {status}"
             )
-        elif frame_count % 20 == 0:
-            # Print a heartbeat every 20 frames so you know it's alive
+        else:
             print(f"[#{frame_count}] scanning... ({status})")
-
-        time.sleep(args.interval)
 
     cap.release()
     print("Bye")
