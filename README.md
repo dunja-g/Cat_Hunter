@@ -121,10 +121,6 @@ Navigate to `http://<raspberry-pi-ip>:5000` in any browser.
 | `Space` | Stop |
 | `1-4` | Set Gear |
 
-## Team
-
-- **Person A** — Data preprocessing, baseline CNN, training loop
-- **Person B** — Augmentation, transfer learning, hyperparameter tuning
 
 ## License
 
