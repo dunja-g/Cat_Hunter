@@ -4,6 +4,9 @@ non_cats/
 data/
 metadata/*.csv
 
+# ===== Archives (deploy packages, zipped datasets) =====
+*.zip
+
 # ===== Model weights =====
 models/*.pth
 models/*.pt
@@ -18,7 +21,6 @@ __pycache__/
 venv/
 env/
 .venv/
-.env
 
 # ===== OS files =====
 .DS_Store
@@ -31,3 +33,6 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# ===== Secrets =====
+.env

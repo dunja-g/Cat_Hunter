@@ -11,11 +11,19 @@ Mode 2 (offloaded):   python3 web_control.py /dev/ttyACM0 --no-ml
 Open http://<raspberrypi-ip>:5000 in browser to control.
 """
 
+import os
 import sys
 import argparse
+import secrets
 import time
 import threading
 import io
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv is optional; plain environment variables also work
 
 from flask import Flask, render_template, Response, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -106,7 +114,8 @@ GEAR_PRESETS = {1: 130, 2: 170, 3: 210, 4: 255}
 DEFAULT_GEAR = 3
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '***REMOVED***'
+# Set FLASK_SECRET_KEY to keep sessions valid across restarts; otherwise a random key is generated.
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY') or secrets.token_hex(32)
 socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
 
 # Global motor controller

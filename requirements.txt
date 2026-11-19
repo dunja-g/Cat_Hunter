@@ -2,6 +2,10 @@
 flask>=2.3
 flask-socketio>=5.3
 pyserial>=3.5
+python-dotenv>=1.0
+
+# ===== Laptop compute node (compute_node.py) =====
+requests>=2.31
 
 # ===== Camera =====
 opencv-python>=4.8
@@ -16,6 +20,9 @@ pandas>=2.0
 Pillow>=10.0
 matplotlib>=3.7
 seaborn>=0.12
+
+# ===== Optional: remote GPU deployment (deployment_tools/) =====
+# paramiko>=3.4
 
 # ===== Optional: Raspberry Pi Camera =====
 # picamera2  # uncomment on Raspberry Pi OS
