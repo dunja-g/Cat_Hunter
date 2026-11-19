@@ -8,20 +8,20 @@ def install_and_download():
     print("Pallas Cat Image Downloader (using Bing)")
     print("==============================================")
     
-    # 1. 自动安装需要的库
-    print("\n[INFO] 正在检查并安装 bing-image-downloader 库...")
+    # 1. Install the required library automatically
+    print("\n[INFO] Checking for and installing the bing-image-downloader library...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "bing-image-downloader"])
     
     from bing_image_downloader import downloader
     
-    # 2. 设置保存路径
-    # 我们把它保存在 data/raw 下面，符合我们的项目结构
+    # 2. Set the output path
+    # Save under data/raw to match the project layout
     output_dir = os.path.join('data', 'raw')
     os.makedirs(output_dir, exist_ok=True)
     
-    # 3. 开始批量下载
-    print("\n[INFO] 准备从必应 (Bing) 批量下载 300 张兔狲 (Pallas cat) 图片...")
-    print("[INFO] 这可能会花费几分钟时间，请耐心等待。下载过程中如果有些链接失效报错是正常的，程序会自动跳过。")
+    # 3. Start the bulk download
+    print("\n[INFO] Downloading 300 Pallas cat images from Bing...")
+    print("[INFO] This can take a few minutes. Some links will fail during download; that is normal and they are skipped automatically.")
     time.sleep(2)
     
     try:
@@ -35,19 +35,19 @@ def install_and_download():
             verbose=False
         )
     except Exception as e:
-        print(f"\n[ERROR] 下载过程中出现错误: {e}")
+        print(f"\n[ERROR] Error during download: {e}")
         
-    # 4. 重命名文件夹为 Pallas
-    # downloader 会默认创建一个名字等于搜索词 ("Pallas cat") 的文件夹
+    # 4. Rename the folder to Pallas
+    # The downloader creates a folder named after the search query ("Pallas cat") by default
     old_folder = os.path.join(output_dir, 'Pallas cat')
     new_folder = os.path.join(output_dir, 'Pallas')
     
     if os.path.exists(old_folder):
         if not os.path.exists(new_folder):
             os.rename(old_folder, new_folder)
-            print(f"\n[SUCCESS] 所有图片已成功下载并重命名，保存在: {new_folder} 文件夹中！")
+            print(f"\n[SUCCESS] All images downloaded and renamed; saved in: {new_folder}")
         else:
-            print(f"\n[SUCCESS] 下载完成！图片保存在: {old_folder} (因为 {new_folder} 已存在)")
+            print(f"\n[SUCCESS] Download complete. Images saved in: {old_folder} (because {new_folder} already exists)")
 
 if __name__ == "__main__":
     install_and_download()

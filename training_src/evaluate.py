@@ -8,33 +8,33 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-# 导入自定义的数据集与模型
+# Import the project dataset and models
 from dataset import CatNonCatDataset, get_transforms
 from baseline_model import get_baseline_model
 from transfer_model import get_transfer_model
 
 def evaluate_model(args):
-    # 1. 检查设备
+    # 1. Select the device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n[INFO] Using device for evaluation: {device}")
     
-    # 2. 加载测试数据集
+    # 2. Load the evaluation split
     test_transform = get_transforms(is_train=False)
     test_dataset = CatNonCatDataset(
-        csv_file=os.path.join("metadata", "test_split.csv"),
+        csv_file=os.path.join("metadata", f"{args.split}_split.csv"),
         transform=test_transform,
         sample_fraction=args.sample_fraction
     )
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     print(f"[INFO] Test dataset size: {len(test_dataset)} samples")
     
-    # 3. 初始化模型结构并载入权重
+    # 3. Build the model and load its weights
     print(f"[INFO] Loading model structure: '{args.model}'...")
     if args.model == "baseline":
         model = get_baseline_model()
         weight_filename = "best_baseline.pth"
     elif args.model == "transfer":
-        # 我们已经将模型升级为 resnet50，必须使用相同的结构才能加载权重
+        # The transfer model is ResNet50; the architecture must match the saved weights
         model = get_transfer_model("resnet50", freeze_backbone=True)
         weight_filename = "best_transfer.pth"
     else:
@@ -49,7 +49,7 @@ def evaluate_model(args):
     model = model.to(device)
     model.eval()
     
-    # 4. 执行预测
+    # 4. Run predictions
     all_preds = []
     all_labels = []
     
@@ -66,7 +66,7 @@ def evaluate_model(args):
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
     
-    # 5. 计算指标
+    # 5. Compute metrics
     print("\n[INFO] =============== EVALUATION REPORT =============== ")
     report = classification_report(
         all_labels, 
@@ -76,7 +76,7 @@ def evaluate_model(args):
     )
     print(report)
     
-    # 6. 计算混淆矩阵并绘制
+    # 6. Compute and plot the confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
     print("Confusion Matrix:")
     print(cm)
@@ -85,7 +85,7 @@ def evaluate_model(args):
 
 def plot_confusion_matrix(cm, model_name):
     """
-    绘制并保存混淆矩阵热力图
+    Plot the confusion matrix as a heatmap and save it.
     """
     plt.figure(figsize=(6, 5))
     sns.heatmap(
@@ -110,6 +110,7 @@ def plot_confusion_matrix(cm, model_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Image Classification Evaluation Script")
     parser.add_argument("--model", type=str, default="baseline", choices=["baseline", "transfer"], help="Model to evaluate")
+    parser.add_argument("--split", type=str, default="val", choices=["val", "test"], help="Split CSV in metadata/ to evaluate on (preprocess.py writes train/val only)")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--sample_fraction", type=float, default=1.0, help="Fraction of test dataset to sample (0.0 to 1.0) for fast CPU run")
     

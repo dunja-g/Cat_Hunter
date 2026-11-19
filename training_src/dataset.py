@@ -8,14 +8,14 @@ from torchvision import transforms
 class CatNonCatDataset(Dataset):
     def __init__(self, csv_file, transform=None, sample_fraction=1.0, seed=42):
         """
-        csv_file: 数据划分 CSV 文件路径
-        transform: 图像数据变换 (包含大小调整、增强、归一化等)
-        sample_fraction: 随机抽样的比例 (0.0 到 1.0)。若小于 1.0，则仅使用部分数据，便于快速调试。
+        csv_file: path to the split CSV file
+        transform: image transforms (resize, augmentation, normalisation, ...)
+        sample_fraction: fraction of rows to sample (0.0 to 1.0). Below 1.0 only part of the data is used, for quick debugging.
         """
         self.df = pd.read_csv(csv_file)
         self.transform = transform
         
-        # 如果需要子采样，主要用于 CPU 快速开发和测试
+        # Optional subsampling, mainly for quick development and testing on CPU
         if sample_fraction < 1.0:
             self.df = self.df.sample(frac=sample_fraction, random_state=seed).reset_index(drop=True)
 
@@ -26,11 +26,11 @@ class CatNonCatDataset(Dataset):
         img_path = self.df.iloc[idx]["image_path"]
         label = self.df.iloc[idx]["label"]
         
-        # 读取图像并转换为 RGB 模式
+        # Load the image and convert it to RGB
         try:
             image = Image.open(img_path).convert("RGB")
         except Exception as e:
-            # 容错处理：如果图像损坏，返回一张纯黑背景图
+            # If the image is corrupt, fall back to a black image instead of crashing
             print(f"[WARNING] Failed to load image {img_path}: {e}")
             image = Image.new("RGB", (224, 224), (0, 0, 0))
             
@@ -41,7 +41,7 @@ class CatNonCatDataset(Dataset):
 
 def get_transforms(is_train=True):
     """
-    获取数据处理流（包括缩放、旋转、水平翻转、亮度调整和归一化）
+    Return the image transform pipeline (resize, random affine, horizontal flip, colour jitter, normalisation).
     """
     if is_train:
         return transforms.Compose([
@@ -49,7 +49,7 @@ def get_transforms(is_train=True):
             transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
-            transforms.ToTensor(),  # ToTensor 会自动把像素归一化到 [0.0, 1.0]
+            transforms.ToTensor(),  # ToTensor scales pixel values to [0.0, 1.0]
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
     else:

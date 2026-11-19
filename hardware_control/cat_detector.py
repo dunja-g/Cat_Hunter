@@ -1,12 +1,12 @@
 """
 Cat Detector — real-time inference module
-Loads a trained model and classifies camera frames as cat / non-cat.
+Loads a trained 5-class breed model and classifies camera frames.
 
 Usage:
     from cat_detector import CatDetector
-    detector = CatDetector("models/best_transfer.pth")
+    detector = CatDetector("models/best_transfer.pth", model_name="resnet50")
     result = detector.classify_frame(bgr_numpy_image)
-    # result = {"detected": True, "confidence": 0.94, "label": "cat"}
+    # result = {"detected": True, "confidence": 0.94, "label": "Ragdoll", ...}
 """
 
 import os
@@ -22,18 +22,18 @@ from torchvision import transforms
 from PIL import Image
 
 # ---------------------------------------------------------------------------
-# Add cat_detection/src to the path so we can import the model definitions
+# Add training_src/ to the path so we can import the model definitions
 # ---------------------------------------------------------------------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SRC_DIR = os.path.join(_HERE, "cat_detection", "src")
+_SRC_DIR = os.path.join(_HERE, os.pardir, "training_src")
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
 
 class CatDetector:
     """
-    Lightweight cat-vs-non-cat classifier for real-time camera frames.
-    Designed to run on a Raspberry Pi (MobileNetV2 recommended).
+    5-class cat breed classifier for real-time camera frames.
+    Runs on the laptop compute node (ResNet50) or on the Pi (MobileNetV2).
     """
 
     # Class names in index order for the 5-class breed model

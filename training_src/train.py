@@ -8,19 +8,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torchvision.transforms import v2
 
-# 导入自定义的数据集与模型
+# Import the project dataset and models
 from dataset import CatNonCatDataset, get_transforms
 from baseline_model import get_baseline_model
 from transfer_model import get_transfer_model
 
 def train_model(args):
-    # 1. 检查设备
+    # 1. Select the device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n[INFO] Using device: {device}")
     if device.type == "cpu":
         print("[WARNING] CUDA is not available. Training will run on CPU. It is highly recommended to use a small --sample_fraction for quick debugging!")
     
-    # 2. 设置数据加载器 (DataLoader)
+    # 2. Set up the DataLoaders
     print(f"[INFO] Loading data splits...")
     train_transform = get_transforms(is_train=True)
     val_transform = get_transforms(is_train=False)
@@ -36,7 +36,7 @@ def train_model(args):
         sample_fraction=args.sample_fraction
     )
     
-    # 统计类别频率并配置 WeightedRandomSampler 解决长尾分布
+    # Count samples per class and use a WeightedRandomSampler to counter class imbalance
     targets = train_dataset.df["label"].values
     class_sample_count = np.array([len(np.where(targets == t)[0]) for t in range(5)])
     weight = 1. / (class_sample_count + 1e-6)
@@ -50,15 +50,15 @@ def train_model(args):
     print(f"[INFO] Train samples size: {len(train_dataset)} | Validation samples size: {len(val_dataset)}")
     print(f"[INFO] Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
     
-    # 3. 初始化模型
+    # 3. Build the model
     print(f"[INFO] Initializing model: '{args.model}'...")
     if args.model == "baseline":
         model = get_baseline_model()
     elif args.model == "transfer":
-        # 如果启用了 fine_tune，则解冻整个骨干网络
+        # With --fine_tune, unfreeze the whole backbone
         freeze_bb = not args.fine_tune
-        # 换用更强的 convnext_tiny 或者继续用 resnet50
-        model = get_transfer_model("convnext_tiny", freeze_backbone=freeze_bb)
+        # Backbone is chosen with --arch (resnet50, convnext_tiny or mobilenet_v2)
+        model = get_transfer_model(args.arch, freeze_backbone=freeze_bb)
     else:
         raise ValueError(f"Unknown model: {args.model}")
         
@@ -68,12 +68,12 @@ def train_model(args):
         print(f"[INFO] Loading custom weights from {args.weights}...")
         model.load_state_dict(torch.load(args.weights, map_location=device))
     
-    # 4. 损失函数与优化器
+    # 4. Loss function and optimiser
     criterion = nn.CrossEntropyLoss()
     
-    # 差异化学习率配置
+    # Discriminative learning rates
     if args.fine_tune and args.model == "transfer":
-        # 主干网络使用极低学习率，分类头使用正常学习率
+        # Backbone gets a 10x lower learning rate than the classification head
         backbone_params = [p for n, p in model.named_parameters() if "classifier" not in n and p.requires_grad]
         head_params = [p for n, p in model.named_parameters() if "classifier" in n and p.requires_grad]
         optimizer_grouped_parameters = [
@@ -91,13 +91,13 @@ def train_model(args):
         else:
             optimizer = optim.SGD(trainable_params, lr=args.lr, momentum=0.9, weight_decay=1e-4)
             
-    # 替换为余弦退火学习率调度器
+    # Cosine annealing learning-rate schedule
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
         
-    # 5. 开始训练循环
+    # 5. Training loop
     print(f"[INFO] Start training for {args.epochs} epochs...")
     
-    # 定义 CutMix 和 MixUp 数据增强 (在 Batch 层面)
+    # CutMix and MixUp augmentation (applied per batch)
     cutmix = v2.CutMix(alpha=1.0, num_classes=5)
     mixup = v2.MixUp(alpha=0.2, num_classes=5)
     cutmix_or_mixup = v2.RandomChoice([cutmix, mixup])
@@ -118,7 +118,7 @@ def train_model(args):
         for batch_idx, (images, labels) in enumerate(train_loader):
             images, labels = images.to(device), labels.to(device)
             
-            # 引入 Mixup/Cutmix (将 Hard label 转为 Soft label)
+            # Apply MixUp/CutMix (turns hard labels into soft labels)
             if not args.no_aug:
                 images, labels = cutmix_or_mixup(images, labels)
             
@@ -133,10 +133,10 @@ def train_model(args):
             total += labels.size(0)
             
             if not args.no_aug:
-                # 软标签，求最大值索引匹配
+                # Soft labels: compare against the argmax class
                 correct += predicted.eq(labels.argmax(dim=1)).sum().item()
             else:
-                # 原始硬标签
+                # Hard labels
                 correct += predicted.eq(labels).sum().item()
             
             if (batch_idx + 1) % 10 == 0 or (batch_idx + 1) == len(train_loader):
@@ -147,7 +147,7 @@ def train_model(args):
         epoch_train_loss = running_loss / total
         epoch_train_acc = 100. * correct / total
         
-        # 验证集评估
+        # Evaluate on the validation set
         model.eval()
         val_loss = 0.0
         val_correct = 0
@@ -169,16 +169,16 @@ def train_model(args):
         
         print(f"==> Epoch [{epoch+1}/{args.epochs}] Complete | Train Loss: {epoch_train_loss:.4f} Acc: {epoch_train_acc:.2f}% | Val Loss: {epoch_val_loss:.4f} Acc: {epoch_val_acc:.2f}%")
         
-        # 记录历史数据
+        # Record history
         history["train_loss"].append(epoch_train_loss)
         history["train_acc"].append(epoch_train_acc)
         history["val_loss"].append(epoch_val_loss)
         history["val_acc"].append(epoch_val_acc)
         
-        # 余弦退火按 epoch 步进 (不用传入 loss)
+        # Cosine annealing steps once per epoch (no loss needed)
         scheduler.step()
         
-        # 保存最佳模型权重
+        # Save the best weights (lowest validation loss)
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
             os.makedirs("models", exist_ok=True)
@@ -186,19 +186,19 @@ def train_model(args):
             torch.save(model.state_dict(), model_path)
             print(f"[SAVED] Saved new best model checkpoint to '{model_path}'")
             
-    # 6. 绘制并保存曲线
+    # 6. Plot and save the curves
     plot_curves(history, args.model)
     print("[INFO] Training finished!")
 
 def plot_curves(history, model_name):
     """
-    绘制 Loss 和 Accuracy 对比曲线并保存为本地图像
+    Plot loss and accuracy curves and save them as an image.
     """
     epochs = range(1, len(history["train_loss"]) + 1)
     
     plt.figure(figsize=(12, 5))
     
-    # 绘制 Loss 曲线
+    # Loss curve
     plt.subplot(1, 2, 1)
     plt.plot(epochs, history["train_loss"], "b-", label="Train Loss")
     plt.plot(epochs, history["val_loss"], "r-", label="Val Loss")
@@ -207,7 +207,7 @@ def plot_curves(history, model_name):
     plt.ylabel("Loss")
     plt.legend()
     
-    # 绘制 Accuracy 曲线
+    # Accuracy curve
     plt.subplot(1, 2, 2)
     plt.plot(epochs, history["train_acc"], "b-", label="Train Acc")
     plt.plot(epochs, history["val_acc"], "r-", label="Val Acc")
@@ -226,6 +226,7 @@ def plot_curves(history, model_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Image Classification Training Script")
     parser.add_argument("--model", type=str, default="baseline", choices=["baseline", "transfer"], help="Model to train")
+    parser.add_argument("--arch", type=str, default="resnet50", choices=["resnet50", "convnext_tiny", "mobilenet_v2"], help="Backbone architecture for --model transfer")
     parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size (keep low for laptops)")
     parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
